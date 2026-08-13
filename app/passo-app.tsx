@@ -1889,12 +1889,20 @@ function AdminEvents() {
                     <Badge tone={row.status}>{row.status}</Badge>
                   </td>
                   <td>
-                    <Button
-                      variant="destructive"
-                      onClick={() => remove(row.id, row.name)}
-                    >
-                      Eliminar
-                    </Button>
+                    <div className="button-row">
+                      <Button
+                        variant="outline"
+                        onClick={() => go(`/admin/events/${row.id}/edit`)}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => remove(row.id, row.name)}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -2208,7 +2216,8 @@ function AccountSettings() {
   );
 }
 
-function NewEvent() {
+function EventForm({ eventId }: { eventId?: string }) {
+  const editing = Boolean(eventId);
   const [form, setForm] = useState({
     name: "",
     slug: "",
@@ -2220,10 +2229,45 @@ function NewEvent() {
     city: "Santiago",
     category: "Experiencias",
     image_url: "",
+    status: "draft",
   });
+  const [loading, setLoading] = useState(editing);
   const [message, setMessage] = useState("");
   const set = (key: string, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
+  useEffect(() => {
+    if (!eventId) return;
+    adminSupabase
+      .from("events")
+      .select("*")
+      .eq("id", eventId)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          setMessage(error.message);
+          setLoading(false);
+          return;
+        }
+        const startsAt = new Date(data.starts_at);
+        const localDate = new Date(
+          startsAt.getTime() - startsAt.getTimezoneOffset() * 60000,
+        ).toISOString();
+        setForm({
+          name: data.name || "",
+          slug: data.slug || "",
+          description: data.description || "",
+          date: localDate.slice(0, 10),
+          time: localDate.slice(11, 16),
+          venue: data.venue || "",
+          address: data.address || "",
+          city: data.city || "",
+          category: data.category || "Experiencias",
+          image_url: data.image_url || "",
+          status: data.status || "draft",
+        });
+        setLoading(false);
+      });
+  }, [eventId]);
   const fileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2235,12 +2279,12 @@ function NewEvent() {
       setMessage(err instanceof Error ? err.message : "No se pudo subir");
     }
   };
-  const save = async (status: "draft" | "published") => {
+  const save = async (status: string = form.status) => {
     if (!form.name || !form.slug || !form.date || !form.time || !form.venue) {
       setMessage("Completa nombre, slug, fecha, hora y lugar.");
       return;
     }
-    const { error } = await adminSupabase.from("events").insert({
+    const payload = {
       name: form.name,
       slug: form.slug,
       description: form.description,
@@ -2251,7 +2295,11 @@ function NewEvent() {
       category: form.category,
       image_url: form.image_url || null,
       status,
-    });
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = editing
+      ? await adminSupabase.from("events").update(payload).eq("id", eventId)
+      : await adminSupabase.from("events").insert(payload);
     if (error) setMessage(error.message);
     else go("/admin/events");
   };
@@ -2262,100 +2310,145 @@ function NewEvent() {
           <ArrowLeft /> Volver a eventos
         </button>
         <AdminHeader
-          title="Crear evento"
-          subtitle="Guarda el evento directamente en Supabase."
+          title={editing ? "Editar evento" : "Crear evento"}
+          subtitle={
+            editing
+              ? "Actualiza toda la información publicada del evento."
+              : "Guarda el evento directamente en Supabase."
+          }
           action={
             <>
-              <Button variant="outline" onClick={() => save("draft")}>
-                Guardar borrador
+              {!editing && (
+                <Button variant="outline" onClick={() => save("draft")}>
+                  Guardar borrador
+                </Button>
+              )}
+              <Button onClick={() => save(editing ? form.status : "published")}>
+                {editing ? "Guardar cambios" : "Publicar evento"}
               </Button>
-              <Button onClick={() => save("published")}>Publicar evento</Button>
             </>
           }
         />
-        <section className="admin-form-section">
-          <h3>Información general</h3>
-          <div className="form-grid">
-            <label className="field">
-              <span>Nombre</span>
-              <input
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Slug</span>
-              <input
-                value={form.slug}
-                onChange={(e) => set("slug", e.target.value)}
-              />
-            </label>
-            <label className="field full-span">
-              <span>Descripción</span>
-              <textarea
-                value={form.description}
-                onChange={(e) => set("description", e.target.value)}
-              />
-            </label>
-            <label className="upload full-span">
-              <FileText />
-              <strong>Imagen del evento</strong>
-              <small>JPG, PNG o WebP, máximo 10 MB</small>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/avif"
-                onChange={fileChange}
-              />
-            </label>
-            {form.image_url && <img src={form.image_url} alt="Vista previa" />}
+        {loading ? (
+          <div className="auth-loading">
+            <div className="spinner" />
+            <p>Cargando evento...</p>
           </div>
-        </section>
-        <section className="admin-form-section">
-          <h3>Fecha y ubicación</h3>
-          <div className="form-grid">
-            <label className="field">
-              <span>Fecha</span>
-              <input
-                type="date"
-                value={form.date}
-                onChange={(e) => set("date", e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Hora</span>
-              <input
-                type="time"
-                value={form.time}
-                onChange={(e) => set("time", e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Lugar</span>
-              <input
-                value={form.venue}
-                onChange={(e) => set("venue", e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Dirección</span>
-              <input
-                value={form.address}
-                onChange={(e) => set("address", e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Ciudad</span>
-              <input
-                value={form.city}
-                onChange={(e) => set("city", e.target.value)}
-              />
-            </label>
-          </div>
-          {message && <p>{message}</p>}
-        </section>
+        ) : (
+          <>
+            <section className="admin-form-section">
+              <h3>Información general</h3>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Nombre</span>
+                  <input
+                    value={form.name}
+                    onChange={(e) => set("name", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Slug</span>
+                  <input
+                    value={form.slug}
+                    onChange={(e) => set("slug", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Categoría</span>
+                  <input
+                    value={form.category}
+                    onChange={(e) => set("category", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Estado</span>
+                  <select
+                    value={form.status}
+                    onChange={(e) => set("status", e.target.value)}
+                  >
+                    <option value="draft">Borrador</option>
+                    <option value="published">Publicado</option>
+                    <option value="sold_out">Agotado</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </label>
+                <label className="field full-span">
+                  <span>Descripción</span>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => set("description", e.target.value)}
+                  />
+                </label>
+                <label className="upload full-span">
+                  <FileText />
+                  <strong>Imagen del evento</strong>
+                  <small>JPG, PNG o WebP, máximo 10 MB</small>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/avif"
+                    onChange={fileChange}
+                  />
+                </label>
+                {form.image_url && (
+                  <img src={form.image_url} alt="Vista previa" />
+                )}
+              </div>
+            </section>
+            <section className="admin-form-section">
+              <h3>Fecha y ubicación</h3>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Fecha</span>
+                  <input
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => set("date", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Hora</span>
+                  <input
+                    type="time"
+                    value={form.time}
+                    onChange={(e) => set("time", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Lugar</span>
+                  <input
+                    value={form.venue}
+                    onChange={(e) => set("venue", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Dirección</span>
+                  <input
+                    value={form.address}
+                    onChange={(e) => set("address", e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Ciudad</span>
+                  <input
+                    value={form.city}
+                    onChange={(e) => set("city", e.target.value)}
+                  />
+                </label>
+              </div>
+              {message && <p>{message}</p>}
+            </section>
+          </>
+        )}
       </main>
     </AdminShell>
   );
+}
+
+function NewEvent() {
+  return <EventForm />;
+}
+function EditEvent({ eventId }: { eventId: string }) {
+  return <EventForm eventId={eventId} />;
 }
 function CheckIn() {
   const [status, setStatus] = useState<"idle" | "valid" | "used" | "invalid">(
@@ -2527,6 +2620,7 @@ export function PassoApp() {
       </Protected>
     );
   if (path.startsWith("/admin")) {
+    const editEventMatch = path.match(/^\/admin\/events\/([^/]+)\/edit$/);
     const page: React.ReactNode =
       path === "/admin" ? (
         <AdminDashboard />
@@ -2534,6 +2628,8 @@ export function PassoApp() {
         <AdminEvents />
       ) : path === "/admin/events/new" ? (
         <NewEvent />
+      ) : editEventMatch ? (
+        <EditEvent eventId={editEventMatch[1]} />
       ) : path === "/admin/orders" ? (
         <AdminList type="orders" />
       ) : path === "/admin/tickets" ? (
