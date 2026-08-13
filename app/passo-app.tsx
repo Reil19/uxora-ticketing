@@ -148,6 +148,55 @@ const events: EventItem[] = [
   },
 ];
 
+function eventFromRow(row: any): EventItem {
+  const startsAt = new Date(row.starts_at);
+  return {
+    slug: row.slug,
+    name: row.name,
+    date: startsAt.toLocaleString("es-CL", {
+      dateStyle: "full",
+      timeStyle: "short",
+    }),
+    shortDate: startsAt
+      .toLocaleDateString("es-CL", { day: "2-digit", month: "short" })
+      .toUpperCase()
+      .replace(".", ""),
+    category: row.category || "Experiencias",
+    venue: row.venue,
+    city: row.city || "",
+    price: row.ticket_types?.length
+      ? money(
+          Math.min(
+            ...row.ticket_types.map(
+              (ticket: { price: number }) => ticket.price,
+            ),
+          ),
+        )
+      : "Próximamente",
+    image: row.image_url || events[0].image,
+    sold: "0",
+    revenue: "$0",
+    status: row.status,
+  };
+}
+
+function usePublishedEvents() {
+  const [items, setItems] = useState<EventItem[]>(
+    events.filter((event) => event.status !== "Borrador"),
+  );
+  useEffect(() => {
+    supabase
+      .from("events")
+      .select("*,ticket_types(price)")
+      .in("status", ["published", "sold_out"])
+      .order("starts_at")
+      .then(({ data }) => {
+        if (data) setItems(data.map(eventFromRow));
+      });
+  }, []);
+  return items;
+}
+
 const ADMIN_EMAILS = new Set(["creativovisualchile@gmail.com"]);
 
 const money = (n: number) =>
@@ -704,6 +753,7 @@ function Stepper({ active = 1 }: { active?: number }) {
 }
 
 function HomePage() {
+  const publishedEvents = usePublishedEvents();
   const [hero, setHero] = useState({
     title: "Vive más. Descubre más.",
     subtitle:
@@ -746,12 +796,15 @@ function HomePage() {
           </div>
           <button
             className="hero-feature"
-            onClick={() => go(`/eventos/${events[0].slug}`)}
+            onClick={() =>
+              go(`/eventos/${publishedEvents[0]?.slug || events[0].slug}`)
+            }
           >
             <span>Evento destacado</span>
-            <strong>{events[0].name}</strong>
+            <strong>{publishedEvents[0]?.name || events[0].name}</strong>
             <small>
-              {events[0].shortDate} · {events[0].venue}
+              {publishedEvents[0]?.shortDate || events[0].shortDate} ·{" "}
+              {publishedEvents[0]?.venue || events[0].venue}
             </small>
           </button>
         </section>
@@ -766,7 +819,7 @@ function HomePage() {
             </button>
           </div>
           <div className="featured-grid">
-            {events.slice(0, 3).map((e, i) => (
+            {publishedEvents.slice(0, 3).map((e, i) => (
               <EventCard event={e} featured={i === 0} key={e.slug} />
             ))}
           </div>
@@ -779,7 +832,7 @@ function HomePage() {
             </div>
           </div>
           <div className="event-grid">
-            {events.slice(2, 6).map((e) => (
+            {publishedEvents.slice(3, 7).map((e) => (
               <EventCard event={e} key={e.slug} />
             ))}
           </div>
@@ -804,9 +857,10 @@ function HomePage() {
 }
 
 function EventsPage() {
+  const publishedEvents = usePublishedEvents();
   const [filter, setFilter] = useState("Todos");
   const [query, setQuery] = useState("");
-  const filtered = events.filter(
+  const filtered = publishedEvents.filter(
     (e) =>
       (filter === "Todos" || e.category === filter) &&
       e.name.toLowerCase().includes(query.toLowerCase()),
@@ -1330,6 +1384,7 @@ const adminNav = [
   { label: "Tickets", path: "/admin/tickets", icon: Ticket },
   { label: "Check-in", path: "/admin/check-in", icon: ScanLine },
   { label: "Usuarios", path: "/admin/users", icon: Users },
+  { label: "Banners", path: "/admin/banners", icon: Sparkles },
   { label: "Configuración", path: "/admin/settings", icon: Settings },
 ];
 function AdminShell({ children }: { children: React.ReactNode }) {
@@ -1537,16 +1592,14 @@ function EventTable({ type = "events" }: { type?: string }) {
     "Estado",
     "Acciones",
   ];
-  let rows: Array<Record<string, string>> = events
-    .slice(0, 4)
-    .map((e) => ({
-      a: e.name,
-      b: e.shortDate,
-      c: e.sold,
-      d: e.revenue,
-      e: e.status,
-      f: "•••",
-    }));
+  let rows: Array<Record<string, string>> = events.slice(0, 4).map((e) => ({
+    a: e.name,
+    b: e.shortDate,
+    c: e.sold,
+    d: e.revenue,
+    e: e.status,
+    f: "•••",
+  }));
   if (type === "orders") {
     heads = [
       "Orden",
@@ -1884,13 +1937,11 @@ function AdminUsers() {
   const createRole = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roleName.trim()) return;
-    const { error } = await adminSupabase
-      .from("roles")
-      .insert({
-        name: roleName.trim(),
-        description: "Rol personalizado",
-        permissions: [],
-      });
+    const { error } = await adminSupabase.from("roles").insert({
+      name: roleName.trim(),
+      description: "Rol personalizado",
+      permissions: [],
+    });
     setMessage(error?.message || "Rol creado.");
     setRoleName("");
     load();
@@ -1960,6 +2011,11 @@ function AdminUsers() {
 }
 
 async function uploadEventImage(file: File) {
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+  if (!allowedTypes.includes(file.type))
+    throw new Error("Usa una imagen JPG, PNG, WebP o AVIF.");
+  if (file.size > 300 * 1024)
+    throw new Error("La imagen no puede superar los 300 KB.");
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const path = `${crypto.randomUUID()}.${ext}`;
   const { error } = await adminSupabase.storage
@@ -1970,7 +2026,7 @@ async function uploadEventImage(file: File) {
     .publicUrl;
 }
 
-function AdminSettings() {
+function AdminBanners() {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [image, setImage] = useState("");
@@ -2003,15 +2059,13 @@ function AdminSettings() {
   };
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await adminSupabase
-      .from("site_settings")
-      .upsert({
-        id: "main",
-        hero_title: title,
-        hero_subtitle: subtitle,
-        hero_image_url: image,
-        updated_at: new Date().toISOString(),
-      });
+    const { error } = await adminSupabase.from("site_settings").upsert({
+      id: "main",
+      hero_title: title,
+      hero_subtitle: subtitle,
+      hero_image_url: image,
+      updated_at: new Date().toISOString(),
+    });
     setMessage(error?.message || "Banner actualizado.");
   };
   return (
@@ -2044,13 +2098,108 @@ function AdminSettings() {
                 <small>JPG, PNG o WebP, máximo 10 MB</small>
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,image/avif"
                   onChange={fileChange}
                 />
               </label>
               {image && <img src={image} alt="Vista previa del banner" />}
             </div>
             <Button type="submit">Guardar banner</Button>
+            {message && <p>{message}</p>}
+          </section>
+        </form>
+      </main>
+    </AdminShell>
+  );
+}
+
+function AccountSettings() {
+  const [profile, setProfile] = useState({ email: "", fullName: "", role: "" });
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    adminSupabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const { data: row } = await adminSupabase
+        .from("profiles")
+        .select("full_name,role")
+        .eq("id", data.user.id)
+        .single();
+      setProfile({
+        email: data.user.email || "",
+        fullName: row?.full_name || data.user.user_metadata?.full_name || "",
+        role: row?.role || "",
+      });
+    });
+  }, []);
+  const updatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) {
+      setMessage("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setMessage("Las contraseñas no coinciden.");
+      return;
+    }
+    const { error } = await adminSupabase.auth.updateUser({ password });
+    setMessage(error?.message || "Contraseña actualizada correctamente.");
+    if (!error) {
+      setPassword("");
+      setConfirmPassword("");
+    }
+  };
+  return (
+    <AdminShell>
+      <main className="admin-page form-admin">
+        <AdminHeader
+          title="Configuración de cuenta"
+          subtitle="Información y seguridad de tu cuenta administrativa."
+        />
+        <section className="admin-form-section">
+          <h3>Información de cuenta</h3>
+          <div className="form-grid">
+            <label className="field">
+              <span>Nombre</span>
+              <input value={profile.fullName} readOnly />
+            </label>
+            <label className="field">
+              <span>Email</span>
+              <input value={profile.email} readOnly />
+            </label>
+            <label className="field">
+              <span>Rol</span>
+              <input value={profile.role} readOnly />
+            </label>
+          </div>
+        </section>
+        <form onSubmit={updatePassword}>
+          <section className="admin-form-section">
+            <h3>Cambiar contraseña</h3>
+            <div className="form-grid">
+              <label className="field">
+                <span>Nueva contraseña</span>
+                <input
+                  type="password"
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label className="field">
+                <span>Confirmar contraseña</span>
+                <input
+                  type="password"
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+            </div>
+            <Button type="submit">Actualizar contraseña</Button>
             {message && <p>{message}</p>}
           </section>
         </form>
@@ -2091,20 +2240,18 @@ function NewEvent() {
       setMessage("Completa nombre, slug, fecha, hora y lugar.");
       return;
     }
-    const { error } = await adminSupabase
-      .from("events")
-      .insert({
-        name: form.name,
-        slug: form.slug,
-        description: form.description,
-        starts_at: new Date(`${form.date}T${form.time}`).toISOString(),
-        venue: form.venue,
-        address: form.address,
-        city: form.city,
-        category: form.category,
-        image_url: form.image_url || null,
-        status,
-      });
+    const { error } = await adminSupabase.from("events").insert({
+      name: form.name,
+      slug: form.slug,
+      description: form.description,
+      starts_at: new Date(`${form.date}T${form.time}`).toISOString(),
+      venue: form.venue,
+      address: form.address,
+      city: form.city,
+      category: form.category,
+      image_url: form.image_url || null,
+      status,
+    });
     if (error) setMessage(error.message);
     else go("/admin/events");
   };
@@ -2156,7 +2303,7 @@ function NewEvent() {
               <small>JPG, PNG o WebP, máximo 10 MB</small>
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,image/avif"
                 onChange={fileChange}
               />
             </label>
@@ -2395,8 +2542,10 @@ export function PassoApp() {
         <CheckIn />
       ) : path === "/admin/users" ? (
         <AdminUsers />
+      ) : path === "/admin/banners" ? (
+        <AdminBanners />
       ) : path === "/admin/settings" ? (
-        <AdminSettings />
+        <AccountSettings />
       ) : (
         <AdminDashboard />
       );
