@@ -204,7 +204,10 @@ function Logo({ inverse = false }: { inverse?: boolean }) {
       onClick={() => go("/")}
       aria-label="Ir al inicio"
     >
-      PASSO<span>.</span>
+      <img
+        src={inverse ? "/uxora-logo-white.png" : "/uxora-logo.svg"}
+        alt="UXORA TICKETING DEMO"
+      />
     </button>
   );
 }
@@ -361,7 +364,7 @@ function AuthPage({ mode }: { mode: "login" | "register" }) {
           <X />
         </button>
         <div className="auth-box">
-          <span className="eyebrow">CUENTA PASSO</span>
+          <span className="eyebrow">CUENTA UXORA TICKETING DEMO</span>
           <h1>{register ? "Crea tu cuenta" : "Qué bueno verte"}</h1>
           <p>
             {register
@@ -506,7 +509,7 @@ function AdminLogin() {
       <div className="auth-brand">
         <Logo inverse />
         <div>
-          <span className="eyebrow">GESTIÓN PASSO</span>
+          <span className="eyebrow">GESTIÓN UXORA TICKETING DEMO</span>
           <h2>Administra eventos, ventas y accesos.</h2>
         </div>
       </div>
@@ -640,7 +643,7 @@ function Footer() {
         </div>
       </div>
       <div className="footer-bottom">
-        © 2026 PASSO <span>Instagram · LinkedIn · X</span>
+        © 2026 UXORA TICKETING DEMO <span>Instagram · LinkedIn · X</span>
       </div>
     </footer>
   );
@@ -755,7 +758,7 @@ function HomePage() {
         <section className="section">
           <div className="section-head">
             <div>
-              <span className="eyebrow">Selección PASSO</span>
+              <span className="eyebrow">Selección UXORA TICKETING DEMO</span>
               <h2>Eventos destacados</h2>
             </div>
             <button className="text-link" onClick={() => go("/eventos")}>
@@ -1289,7 +1292,7 @@ function DigitalTicket() {
           </Badge>
         </div>
         <div className="ticket-content">
-          <span className="eyebrow">PASSO PRESENTA</span>
+          <span className="eyebrow">UXORA TICKETING DEMO PRESENTA</span>
           <h1>Concierto bajo las estrellas</h1>
           <div className="ticket-meta">
             <span>
@@ -2216,7 +2219,7 @@ function CheckIn() {
       <main className="checkin-page">
         <div className="checkin-head">
           <div>
-            <span className="eyebrow">PASSO ACCESS</span>
+            <span className="eyebrow">UXORA TICKETING DEMO ACCESS</span>
             <h1>Control de acceso</h1>
             <p>Escanea el código QR de la entrada.</p>
           </div>
